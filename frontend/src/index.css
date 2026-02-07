@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased dark:bg-gray-950 dark:text-gray-100;
+  }
+}
+
+@layer components {
+  .filter-chip {
+    @apply px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-all;
+    @apply bg-gray-100 text-gray-700 hover:bg-gray-200;
+    @apply dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800;
+  }
+
+  .filter-chip-active {
+    @apply bg-gray-900 text-white hover:bg-gray-800;
+    @apply dark:bg-violet-600 dark:text-white dark:hover:bg-violet-500;
+  }
+
+  .sidebar-link {
+    @apply flex items-center space-x-3 px-3 py-2.5 rounded-lg text-gray-600 transition-colors;
+    @apply hover:bg-gray-100 hover:text-gray-900;
+    @apply dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100;
+  }
+
+  .sidebar-link-active {
+    @apply bg-primary-50 text-primary-700 font-medium;
+    @apply dark:bg-violet-900/30 dark:text-violet-400;
+  }
+
+  .thread-line {
+    @apply absolute left-5 top-12 bottom-0 w-0.5 bg-gray-200 dark:bg-gray-800;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .gradient-ring {
+    background: linear-gradient(135deg, #f59e0b, #ef4444, #8b5cf6, #0ea5e9);
+    padding: 2px;
+    border-radius: 9999px;
+  }
+
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}

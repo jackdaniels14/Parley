@@ -1,0 +1,11 @@
+{
+  "projects": {
+    "default": "parley-a9d23"
+  },
+  "targets": {
+    "parley-a9d23": {
+      "hosting": {}
+    }
+  },
+  "etags": {}
+}
