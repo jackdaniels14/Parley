@@ -30,7 +30,6 @@ export const registerUsername = onCall(async (request) => {
   const email = request.auth.token.email || "";
   const usernameLower = username.toLowerCase();
 
-  // Transaction to atomically create user doc + username reservation
   await db.runTransaction(async (transaction) => {
     const usernameRef = db.collection("usernames").doc(usernameLower);
     const userRef = db.collection("users").doc(uid);
@@ -54,10 +53,53 @@ export const registerUsername = onCall(async (request) => {
       bio: null,
       location: null,
       website: null,
+      pronouns: null,
+      avatarUrl: null,
       profileVisibility: "public",
       isActive: true,
       isModerator: false,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
+
+      // Competitive stats (initialized at zero)
+      rank: "bronze",
+      rankPoints: 0,
+      totalDebates: 0,
+      wins: 0,
+      losses: 0,
+      draws: 0,
+      winStreak: 0,
+      bestWinStreak: 0,
+      upsetWins: 0,
+
+      // AI score averages
+      avgLogicScore: 0,
+      avgEvidenceScore: 0,
+      avgOnTopicScore: 0,
+      avgCrowdScore: 0,
+
+      // Matchmaking preferences
+      matchmakingEnabled: false,
+      preferredFormats: [],
+      preferredCategories: [],
+
+      // Merit-based judging (starts at 50 = neutral baseline)
+      judgeScore: 50,
+    });
+
+    // Initialize judge profile
+    const judgeRef = db
+      .collection("users")
+      .doc(uid)
+      .collection("judgeProfile")
+      .doc("stats");
+    transaction.set(judgeRef, {
+      totalVotesCast: 0,
+      accurateVotes: 0,
+      neutralityScore: 100,
+      fairnessScore: 100,
+      compositeJudgeScore: 50,
+      recentVoteDirections: [],
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
   });
 

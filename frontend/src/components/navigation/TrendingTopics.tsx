@@ -13,18 +13,18 @@ const gradients = [
 ]
 
 export default function TrendingTopics({ debates }: TrendingTopicsProps) {
-  // Deduplicate by topic and sort by participant count
-  const topicMap = new Map<string, { name: string; participantCount: number }>()
+  // Deduplicate by topic and sort by spectator count
+  const topicMap = new Map<string, { name: string; spectatorCount: number }>()
   debates.forEach((d) => {
-    if (!d.topic) return
+    if (!d.topicId) return
     const existing = topicMap.get(d.topicId)
-    if (!existing || d.participantCount > existing.participantCount) {
-      topicMap.set(d.topicId, { name: d.topic.name, participantCount: d.participantCount })
+    if (!existing || d.spectatorCount > existing.spectatorCount) {
+      topicMap.set(d.topicId, { name: d.topicName, spectatorCount: d.spectatorCount })
     }
   })
 
   const trending = Array.from(topicMap.entries())
-    .sort((a, b) => b[1].participantCount - a[1].participantCount)
+    .sort((a, b) => b[1].spectatorCount - a[1].spectatorCount)
     .slice(0, 8)
 
   if (trending.length === 0) return null

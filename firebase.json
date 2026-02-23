@@ -3,6 +3,9 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
+  "storage": {
+    "rules": "storage.rules"
+  },
   "functions": [
     {
       "source": "functions",
@@ -20,7 +23,7 @@
     }
   ],
   "hosting": {
-    "site": "parleytest-app",
+    "site": "parlay-8eba6",
     "public": "frontend/dist",
     "ignore": [
       "firebase.json",

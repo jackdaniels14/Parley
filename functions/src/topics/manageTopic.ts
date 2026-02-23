@@ -3,6 +3,14 @@ import * as admin from "firebase-admin";
 
 const db = admin.firestore();
 
+const VALID_CATEGORIES = [
+  "Culture & Trends",
+  "Business & Money",
+  "Fitness & Health",
+  "Local Issues",
+  "Hypotheticals & Moral Dilemmas",
+];
+
 interface ManageTopicData {
   action: "create" | "update";
   slug: string;
@@ -27,6 +35,10 @@ export const manageTopic = onCall(async (request) => {
 
   const data = request.data as ManageTopicData;
 
+  if (data.category && !VALID_CATEGORIES.includes(data.category)) {
+    throw new HttpsError("invalid-argument", `Invalid category. Must be one of: ${VALID_CATEGORIES.join(", ")}`);
+  }
+
   if (data.action === "create") {
     if (!data.name || !data.slug) {
       throw new HttpsError("invalid-argument", "name and slug are required");
@@ -39,9 +51,10 @@ export const manageTopic = onCall(async (request) => {
       category: data.category || null,
       description: data.description || null,
       isActive: true,
+      debateCount: 0,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
-    // Use transaction to atomically check slug uniqueness and create
     await db.runTransaction(async (transaction) => {
       const existingSnap = await db
         .collection("topics")
@@ -50,10 +63,7 @@ export const manageTopic = onCall(async (request) => {
         .get();
 
       if (!existingSnap.empty) {
-        throw new HttpsError(
-          "already-exists",
-          "Topic with this slug already exists"
-        );
+        throw new HttpsError("already-exists", "Topic with this slug already exists");
       }
 
       transaction.set(topicRef, topicData);
@@ -65,7 +75,6 @@ export const manageTopic = onCall(async (request) => {
       throw new HttpsError("invalid-argument", "slug is required to identify topic");
     }
 
-    // Find topic by slug
     const topicSnap = await db
       .collection("topics")
       .where("slug", "==", data.slug)

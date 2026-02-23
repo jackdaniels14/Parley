@@ -9,7 +9,11 @@ import { MenuIcon, XIcon } from '../icons'
 import Avatar from './Avatar'
 import clsx from 'clsx'
 
-export default function Layout() {
+interface LayoutProps {
+  variant?: 'default' | 'feed'
+}
+
+export default function Layout({ variant = 'default' }: LayoutProps) {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -131,14 +135,20 @@ export default function Layout() {
         </div>
 
         {/* Main content */}
-        <main className={clsx(
-          'flex-1 min-w-0 pb-20 md:pb-0',
-          'px-4 sm:px-6 py-6'
-        )}>
-          <div className="max-w-3xl mx-auto">
+        {variant === 'feed' ? (
+          <main className="flex-1 min-w-0 overflow-hidden">
             <Outlet />
-          </div>
-        </main>
+          </main>
+        ) : (
+          <main className={clsx(
+            'flex-1 min-w-0 pb-20 md:pb-0',
+            'px-4 sm:px-6 py-6'
+          )}>
+            <div className="max-w-3xl mx-auto">
+              <Outlet />
+            </div>
+          </main>
+        )}
       </div>
 
       {/* Mobile bottom nav */}

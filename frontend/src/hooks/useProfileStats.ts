@@ -1,12 +1,10 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMemo } from 'react'
 import { getProfileStats } from '../services/firestore'
-import type { ProfileStats } from '../types'
+import type { User, ProfileStats } from '../types'
 
-export function useProfileStats(uid: string | undefined) {
-  return useQuery<ProfileStats>({
-    queryKey: ['profileStats', uid],
-    queryFn: () => getProfileStats(uid!),
-    enabled: !!uid,
-    staleTime: 1000 * 60 * 10, // 10 minutes
-  })
+export function useProfileStats(user: User | null | undefined): ProfileStats | null {
+  return useMemo(() => {
+    if (!user) return null
+    return getProfileStats(user)
+  }, [user])
 }

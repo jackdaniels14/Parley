@@ -1,8 +1,16 @@
 import { httpsCallable } from 'firebase/functions'
 import { functions } from '../lib/firebase'
-import type { Debate, Post } from '../types'
+import type {
+  Debate,
+  Argument,
+  DebateFormat,
+  TopicCategory,
+} from '../types'
 
+// ============================================================
 // Auth
+// ============================================================
+
 export async function registerUsername(
   username: string,
   displayName?: string
@@ -15,71 +23,144 @@ export async function registerUsername(
   return result.data
 }
 
+// ============================================================
 // Debates
-export async function getDailyDebates(): Promise<Debate[]> {
-  const fn = httpsCallable<void, Record<string, unknown>[]>(functions, 'getDailyDebates')
-  const result = await fn()
-  // Map the returned data to ensure proper Debate shape
-  return result.data.map((d) => ({
-    id: d.id as string,
-    topicId: d.topicId as string,
-    title: d.title as string,
-    description: (d.description as string) || null,
-    createdAt: d.createdAt as string,
-    expiresAt: d.expiresAt as string,
-    isActive: d.isActive as boolean,
-    participantCount: (d.participantCount as number) || 0,
-    topic: {
-      id: d.topicId as string,
-      name: (d.topicName as string) || '',
-      slug: (d.topicSlug as string) || '',
-      category: (d.topicCategory as string) || null,
-      description: null,
-      isActive: true,
-    },
-  }))
-}
+// ============================================================
 
 export async function createDebateFn(data: {
   topicId: string
   title: string
   description?: string
-  durationHours?: number
+  format: DebateFormat
+  totalRounds?: number
+  wordLimit?: number
+  timePerRound?: number
+  position: string
+  side: 'for' | 'against'
 }): Promise<Debate> {
   const fn = httpsCallable(functions, 'createDebate')
   const result = await fn(data)
   return result.data as Debate
 }
 
-// Posts
-export async function createPostFn(data: {
+export async function joinDebateFn(data: {
   debateId: string
-  stance: string
-  position: string
-  reasoning: string
-}): Promise<Post> {
-  const fn = httpsCallable(functions, 'createPost')
+  side: 'for' | 'against'
+  position?: string
+}): Promise<{ success: boolean; side: string; role: string }> {
+  const fn = httpsCallable(functions, 'joinDebate')
   const result = await fn(data)
-  return result.data as Post
+  return result.data as { success: boolean; side: string; role: string }
 }
 
-export async function replyToPostFn(data: {
-  postId: string
-  stance: string
-  position: string
-  reasoning: string
-}): Promise<Post> {
-  const fn = httpsCallable(functions, 'replyToPost')
-  const result = await fn(data)
-  return result.data as Post
+export async function startDebateFn(debateId: string): Promise<{ success: boolean }> {
+  const fn = httpsCallable(functions, 'startDebate')
+  const result = await fn({ debateId })
+  return result.data as { success: boolean }
 }
 
+export async function advanceRoundFn(debateId: string): Promise<{ success: boolean }> {
+  const fn = httpsCallable(functions, 'advanceRound')
+  const result = await fn({ debateId })
+  return result.data as { success: boolean }
+}
+
+export async function finalizeDebateFn(debateId: string): Promise<{
+  success: boolean
+  overallWinner: string
+}> {
+  const fn = httpsCallable(functions, 'finalizeDebate')
+  const result = await fn({ debateId })
+  return result.data as { success: boolean; overallWinner: string }
+}
+
+export async function cancelDebateFn(
+  debateId: string,
+  reason?: string
+): Promise<{ success: boolean }> {
+  const fn = httpsCallable(functions, 'cancelDebate')
+  const result = await fn({ debateId, reason })
+  return result.data as { success: boolean }
+}
+
+// ============================================================
+// Arguments
+// ============================================================
+
+export async function submitArgumentFn(data: {
+  debateId: string
+  claim: string
+  reasoning: string
+  evidence: string
+  sources?: string[]
+  acknowledgesOpponentPoint?: boolean
+  concessionText?: string
+  rebuttalTargetId?: string
+}): Promise<Argument> {
+  const fn = httpsCallable(functions, 'submitArgument')
+  const result = await fn(data)
+  return result.data as Argument
+}
+
+// ============================================================
+// Matchmaking
+// ============================================================
+
+export async function enqueueForMatchFn(data: {
+  format: DebateFormat
+  category?: TopicCategory
+  topicId?: string
+  stance: 'for' | 'against' | 'either'
+}): Promise<{ queueEntryId: string; success: boolean }> {
+  const fn = httpsCallable(functions, 'enqueueForMatch')
+  const result = await fn(data)
+  return result.data as { queueEntryId: string; success: boolean }
+}
+
+export async function dequeueFromMatchFn(
+  queueEntryId: string
+): Promise<{ success: boolean }> {
+  const fn = httpsCallable(functions, 'dequeueFromMatch')
+  const result = await fn({ queueEntryId })
+  return result.data as { success: boolean }
+}
+
+// ============================================================
+// Challenges
+// ============================================================
+
+export async function issueChallengeFn(data: {
+  challengedUserId: string
+  topicId: string
+  proposedTitle: string
+  proposedPosition: string
+  format?: DebateFormat
+  message?: string
+}): Promise<{ challengeId: string; success: boolean }> {
+  const fn = httpsCallable(functions, 'issueChallenge')
+  const result = await fn(data)
+  return result.data as { challengeId: string; success: boolean }
+}
+
+export async function respondToChallengeFn(data: {
+  challengeId: string
+  response: 'accept' | 'decline'
+  counterPosition?: string
+}): Promise<{ success: boolean; debateId: string | null }> {
+  const fn = httpsCallable(functions, 'respondToChallenge')
+  const result = await fn(data)
+  return result.data as { success: boolean; debateId: string | null }
+}
+
+// ============================================================
 // Topics
+// ============================================================
+
 export async function manageTopicFn(data: {
   action: 'create' | 'update'
   slug: string
   name?: string
-  category?: string
+  category?: TopicCategory
   description?: string
   isActive?: boolean
 }): Promise<Record<string, unknown>> {
@@ -88,53 +169,79 @@ export async function manageTopicFn(data: {
   return result.data as Record<string, unknown>
 }
 
+// ============================================================
 // Moderation
-export async function reportPostFn(data: {
-  postId: string
+// ============================================================
+
+export async function reportContentFn(data: {
+  targetType: 'argument' | 'user' | 'debate' | 'clip'
+  targetId: string
   reason: string
   details?: string
 }): Promise<{ id: string; success: boolean }> {
-  const fn = httpsCallable<
-    { postId: string; reason: string; details?: string },
-    { id: string; success: boolean }
-  >(functions, 'reportPost')
+  const fn = httpsCallable(functions, 'reportContent')
   const result = await fn(data)
-  return result.data
+  return result.data as { id: string; success: boolean }
 }
 
 export async function actionReportFn(data: {
   reportId: string
-  status: 'reviewed' | 'actioned'
-  hidePost?: boolean
+  status: 'reviewed' | 'actioned' | 'dismissed'
+  hideContent?: boolean
+  actionTaken?: string
 }): Promise<{ success: boolean }> {
   const fn = httpsCallable(functions, 'actionReport')
   const result = await fn(data)
   return result.data as { success: boolean }
 }
 
-// Social
-export async function syncSocialAccountFn(
-  provider: string
-): Promise<{ success: boolean; lastSyncedAt: string }> {
-  const fn = httpsCallable(functions, 'syncSocialAccount')
-  const result = await fn({ provider })
-  return result.data as { success: boolean; lastSyncedAt: string }
+export async function moderateDebateFn(data: {
+  debateId: string
+  actionType: string
+  content: string
+  roundNumber?: number
+}): Promise<{ id: string; success: boolean }> {
+  const fn = httpsCallable(functions, 'moderateDebate')
+  const result = await fn(data)
+  return result.data as { id: string; success: boolean }
 }
 
-export async function getSuggestedPreferencesFn(): Promise<
-  Array<{
-    topicId: string
-    stance: string
-    source: string
-    confidence: number
-  }>
-> {
-  const fn = httpsCallable(functions, 'getSuggestedPreferences')
-  const result = await fn()
-  return result.data as Array<{
-    topicId: string
-    stance: string
-    source: string
-    confidence: number
-  }>
+export async function contentCheckFn(
+  text: string
+): Promise<{ ok: boolean; reason?: string }> {
+  const fn = httpsCallable(functions, 'contentCheck')
+  const result = await fn({ text })
+  return result.data as { ok: boolean; reason?: string }
+}
+
+// ============================================================
+// Clips
+// ============================================================
+
+export async function processVideoClipsFn(clipId: string): Promise<{
+  suggestions: Array<{ startTime: number; endTime: number; hookText: string; reason: string }>
+}> {
+  const fn = httpsCallable(functions, 'processVideoClips')
+  const result = await fn({ clipId })
+  return result.data as {
+    suggestions: Array<{ startTime: number; endTime: number; hookText: string; reason: string }>
+  }
+}
+
+export async function fetchOEmbedFn(url: string): Promise<{
+  platform: string
+  title: string
+  authorName: string
+  thumbnailUrl: string | null
+  embedHtml: string | null
+}> {
+  const fn = httpsCallable(functions, 'fetchOEmbed')
+  const result = await fn({ url })
+  return result.data as {
+    platform: string
+    title: string
+    authorName: string
+    thumbnailUrl: string | null
+    embedHtml: string | null
+  }
 }

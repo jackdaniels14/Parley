@@ -1,10 +1,11 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { formatDistanceToNow } from 'date-fns'
 import { useCurrentUser, useProfileStats } from '../hooks'
-import { updateUserProfile, listPreferences, listTopics, getUserPosts, getDebateById } from '../services/firestore'
-import { Card, Button, Input, TextArea, Avatar, StanceBadge, Loading } from '../components/common'
+import { updateUserProfile, listPreferences, listTopics, listDebates } from '../services/firestore'
+import { Card, Button, Input, TextArea, Loading } from '../components/common'
+import Avatar from '../components/common/Avatar'
+import RankBadge from '../components/common/RankBadge'
 import { MapPinIcon, GlobeIcon, EyeIcon, EyeOffIcon, FireIcon, ChatBubbleIcon, LightbulbIcon } from '../components/icons'
 
 interface FormState {
@@ -40,7 +41,7 @@ export default function Profile() {
   const queryClient = useQueryClient()
   const { user, isLoading, isError, uid, firebaseUser } = useCurrentUser()
 
-  const { data: stats } = useProfileStats(uid ?? undefined)
+  const stats = useProfileStats(user)
   const [isEditing, setIsEditing] = useState(false)
   const [formState, setFormState] = useState<FormState>(emptyForm)
   const [saveError, setSaveError] = useState('')
@@ -76,30 +77,15 @@ export default function Profile() {
     return new Map(topics.map((t) => [t.id, t.name]))
   }, [topics])
 
-  const { data: allUserPosts, isLoading: postsLoading } = useQuery({
-    queryKey: ['userPosts', uid],
-    queryFn: () => getUserPosts(uid!),
+  const { data: recentDebates, isLoading: debatesLoading } = useQuery({
+    queryKey: ['debateHistory', uid],
+    queryFn: () => listDebates({ limit: 10 }),
     enabled: !!uid,
     staleTime: 1000 * 60 * 5,
-  })
-
-  const recentPosts = useMemo(() => allUserPosts?.slice(0, 5) ?? [], [allUserPosts])
-
-  const debateIds = useMemo(
-    () => [...new Set(recentPosts.map((p) => p.debateId))].sort(),
-    [recentPosts],
-  )
-
-  const { data: debateMap } = useQuery({
-    queryKey: ['debateTitles', debateIds],
-    queryFn: async () => {
-      const results = await Promise.all(debateIds.map((id) => getDebateById(id)))
-      const map = new Map<string, string>()
-      results.forEach((d) => { if (d) map.set(d.id, d.title) })
-      return map
-    },
-    enabled: debateIds.length > 0,
-    staleTime: 1000 * 60 * 10,
+    select: (debates) => debates.filter((d) =>
+      d.forSide.teamMembers.some((m) => m.uid === uid) ||
+      d.againstSide.teamMembers.some((m) => m.uid === uid)
+    ).slice(0, 5),
   })
 
   const updateMutation = useMutation({
@@ -163,6 +149,9 @@ export default function Profile() {
   }
 
   const name = user.displayName || user.username
+  const winRate = stats && stats.totalDebates > 0
+    ? Math.round((stats.wins / stats.totalDebates) * 100)
+    : 0
 
   return (
     <div className="space-y-6">
@@ -173,15 +162,30 @@ export default function Profile() {
           <div className="flex items-end justify-between -mt-10">
             <Avatar name={name} size="xl" showGradientRing />
             {!isEditing && (
-              <Button variant="outline" onClick={() => setIsEditing(true)} className="mt-12">
-                Edit Profile
-              </Button>
+              <div className="mt-12 flex items-center gap-2">
+                <Button variant="outline" onClick={() => setIsEditing(true)}>
+                  Edit Profile
+                </Button>
+                <Link
+                  to="/settings"
+                  className="flex items-center justify-center w-9 h-9 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                  title="Settings"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </Link>
+              </div>
             )}
           </div>
 
-          <div className="mt-3">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">{name}</h2>
-            <p className="text-gray-500 dark:text-gray-400">@{user.username}</p>
+          <div className="mt-3 flex items-center gap-3">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">{name}</h2>
+              <p className="text-gray-500 dark:text-gray-400">@{user.username}</p>
+            </div>
+            <RankBadge rank={user.rank} size="md" />
           </div>
 
           {/* Extra info row */}
@@ -197,26 +201,79 @@ export default function Profile() {
             </div>
           )}
 
-          {/* Stats row */}
-          <div className="flex gap-6 mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
+          {/* Competitive Stats */}
+          <div className="grid grid-cols-4 gap-4 mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
             <div className="text-center">
               <div className="text-lg font-bold text-gray-900 dark:text-gray-100">
-                {stats?.debatesJoined ?? '-'}
+                {stats?.totalDebates ?? 0}
               </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Debates Joined</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">Debates</div>
             </div>
             <div className="text-center">
-              <div className="text-lg font-bold text-gray-900 dark:text-gray-100">
-                {stats?.opinionsShared ?? '-'}
+              <div className="text-lg font-bold text-green-600 dark:text-green-400">
+                {stats?.wins ?? 0}
               </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Opinions Shared</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">Wins</div>
             </div>
             <div className="text-center">
-              <div className="text-lg font-bold text-gray-900 dark:text-gray-100">
-                {stats?.reactionsReceived ?? '-'}
+              <div className="text-lg font-bold text-red-600 dark:text-red-400">
+                {stats?.losses ?? 0}
               </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Reactions Received</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">Losses</div>
             </div>
+            <div className="text-center">
+              <div className="text-lg font-bold text-primary-600 dark:text-primary-400">
+                {winRate}%
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">Win Rate</div>
+            </div>
+          </div>
+
+          {/* Score Averages */}
+          {stats && stats.totalDebates > 0 && (
+            <div className="grid grid-cols-4 gap-4 mt-3">
+              <div className="text-center">
+                <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {stats.avgLogicScore.toFixed(0)}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">Logic</div>
+              </div>
+              <div className="text-center">
+                <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {stats.avgEvidenceScore.toFixed(0)}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">Evidence</div>
+              </div>
+              <div className="text-center">
+                <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {stats.avgOnTopicScore.toFixed(0)}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">On Topic</div>
+              </div>
+              <div className="text-center">
+                <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {stats.avgCrowdScore.toFixed(0)}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">Crowd</div>
+              </div>
+            </div>
+          )}
+
+          {/* Streaks & Judge Score */}
+          <div className="flex items-center gap-6 mt-3 text-sm text-gray-600 dark:text-gray-400">
+            {(stats?.winStreak ?? 0) > 0 && (
+              <span className="flex items-center gap-1">
+                <FireIcon className="w-4 h-4 text-orange-500" />
+                {stats!.winStreak} streak
+              </span>
+            )}
+            {(stats?.bestWinStreak ?? 0) > 0 && (
+              <span>Best streak: {stats!.bestWinStreak}</span>
+            )}
+            {(stats?.upsetWins ?? 0) > 0 && (
+              <span>Upsets: {stats!.upsetWins}</span>
+            )}
+            <span>Judge score: {stats?.judgeScore ?? 50}</span>
           </div>
         </div>
       </Card>
@@ -406,49 +463,39 @@ export default function Profile() {
         )}
       </Card>
 
-      {/* Recent Activity */}
+      {/* Recent Debates */}
       <Card padding="lg">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
           <ChatBubbleIcon className="w-5 h-5 text-primary-500 dark:text-violet-400" />
-          Recent Activity
+          Recent Debates
         </h3>
-        {postsLoading ? (
+        {debatesLoading ? (
           <div className="flex justify-center py-6"><Loading size="sm" /></div>
-        ) : recentPosts.length === 0 ? (
-          <p className="text-sm text-gray-500 dark:text-gray-400">No activity yet. Join a debate to get started!</p>
+        ) : !recentDebates || recentDebates.length === 0 ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400">No debates yet. Join the arena to get started!</p>
         ) : (
           <div className="divide-y divide-gray-100 dark:divide-gray-800">
-            {recentPosts.map((post) => (
+            {recentDebates.map((debate) => (
               <Link
-                key={post.id}
-                to={`/debate/${post.debateId}`}
+                key={debate.id}
+                to={`/debate/${debate.id}`}
                 className="block py-3 first:pt-0 last:pb-0 hover:bg-gray-50 dark:hover:bg-gray-800/50 -mx-2 px-2 rounded transition-colors"
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate mr-2">
-                    {debateMap?.get(post.debateId) ?? 'Debate'}
+                    {debate.title}
                   </span>
-                  <span className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">
-                    {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 mb-1">
-                  <StanceBadge stance={post.stance} size="sm" />
-                  <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{post.position}</span>
-                </div>
-                {post.reasoning && (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{post.reasoning}</p>
-                )}
-                <div className="flex items-center gap-3 mt-1 text-xs text-gray-400 dark:text-gray-500">
-                  <span className="flex items-center gap-1">
-                    <ChatBubbleIcon className="w-3 h-3" />
-                    {post.replyCount}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <FireIcon className="w-3 h-3" />
-                    {(post.reactions?.changedMindCount ?? 0) + (post.reactions?.goodPointCount ?? 0) + (post.reactions?.fairDisagreeCount ?? 0)}
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                    debate.status === 'completed' ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' :
+                    debate.status === 'active' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                    'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                  }`}>
+                    {debate.status}
                   </span>
                 </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {debate.topicName} — {debate.topicCategory}
+                </p>
               </Link>
             ))}
           </div>
