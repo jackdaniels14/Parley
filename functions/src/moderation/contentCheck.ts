@@ -6,18 +6,26 @@ const ATTACK_PATTERNS = [
   "you're dumb",
   "shut up",
   "you moron",
+  "kill yourself",
+  "kys",
+  "go die",
+  "retard",
+  "you're trash",
+  "you're garbage",
+  "piece of shit",
+  "stfu",
 ];
 
 export function checkContent(text: string): {ok: boolean; reason?: string} {
   const textLower = text.toLowerCase();
 
   if (text.trim().length < 10) {
-    return {ok: false, reason: "Content too short"};
+    return {ok: false, reason: "Content too short (minimum 10 characters)"};
   }
 
   for (const pattern of ATTACK_PATTERNS) {
     if (textLower.includes(pattern)) {
-      return {ok: false, reason: "Contains prohibited content"};
+      return {ok: false, reason: "Contains personal attacks or prohibited content"};
     }
   }
 

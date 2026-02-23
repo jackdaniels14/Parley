@@ -3,35 +3,41 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper: check if the requesting user is authenticated
+    // === Helpers ===
     function isAuth() {
       return request.auth != null;
     }
 
-    // Helper: check if the requesting user is the document owner
     function isOwner(uid) {
       return isAuth() && request.auth.uid == uid;
     }
 
-    // Helper: check if user is a moderator
     function isModerator() {
       return isAuth() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isModerator == true;
     }
 
-    // Helper: validate stance value
     function isValidStance(stance) {
       return stance in ['love', 'hate', 'neutral'];
     }
 
-    // Users collection
+    // Protected user fields that only Cloud Functions can modify
+    function userProtectedFields() {
+      return ['email', 'username', 'isModerator', 'createdAt',
+              'rank', 'rankPoints', 'totalDebates', 'wins', 'losses', 'draws',
+              'winStreak', 'bestWinStreak', 'upsetWins',
+              'avgLogicScore', 'avgEvidenceScore', 'avgOnTopicScore', 'avgCrowdScore',
+              'judgeScore'];
+    }
+
+    // === Users ===
     match /users/{uid} {
       allow read: if isAuth();
-      allow create: if false; // Created via Cloud Function (registerUsername)
+      allow create: if false; // Cloud Function only (registerUsername)
       allow update: if isOwner(uid)
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['email', 'username', 'isModerator', 'createdAt']);
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(userProtectedFields());
       allow delete: if false;
 
-      // User preferences subcollection
+      // Topic preferences
       match /preferences/{topicId} {
         allow read: if isOwner(uid);
         allow create: if isOwner(uid)
@@ -42,74 +48,151 @@ service cloud.firestore {
         allow delete: if isOwner(uid);
       }
 
-      // Settings subcollection
+      // Settings (notifications, privacy, etc.)
       match /settings/{settingId} {
         allow read, write: if isOwner(uid);
       }
 
-      // Social accounts subcollection
-      match /socialAccounts/{provider} {
-        allow read: if isOwner(uid);
-        allow write: if false; // Managed via Cloud Functions
+      // Topic credibility (competitive stats per topic)
+      match /topicCredibility/{topicId} {
+        allow read: if isAuth();
+        allow write: if false; // Cloud Function only
       }
 
-      // Debate history subcollection
+      // Judge profile (merit-based judging stats)
+      match /judgeProfile/{docId} {
+        allow read: if isAuth();
+        allow write: if false; // Cloud Function only
+      }
+
+      // Debate history
       match /debateHistory/{debateId} {
         allow read: if isOwner(uid);
-        allow write: if false; // Managed via Cloud Functions
+        allow write: if false; // Cloud Function only
+      }
+
+      // Social accounts
+      match /socialAccounts/{provider} {
+        allow read: if isOwner(uid);
+        allow write: if false; // Cloud Function only
       }
     }
 
-    // Usernames collection (enforces uniqueness)
+    // === Usernames (uniqueness enforcement) ===
     match /usernames/{username} {
-      allow read: if true; // Public read for availability checking
-      allow write: if false; // Managed via Cloud Function (registerUsername)
+      allow read: if true;
+      allow write: if false; // Cloud Function only
     }
 
-    // Topics collection
+    // === Topics ===
     match /topics/{topicId} {
-      allow read: if true; // Public read
-      allow write: if false; // Managed via Cloud Function (manageTopic) to enforce slug uniqueness
+      allow read: if true;
+      allow write: if false; // Cloud Function only
     }
 
-    // Debates collection
+    // === Debates ===
     match /debates/{debateId} {
       allow read: if isAuth();
-      allow write: if false; // Managed via Cloud Functions
+      allow write: if false; // All lifecycle managed by Cloud Functions
+
+      // Rounds subcollection
+      match /rounds/{roundNumber} {
+        allow read: if isAuth();
+        allow write: if false; // Cloud Function only
+      }
     }
 
-    // Posts collection (flat)
-    match /posts/{postId} {
+    // === Arguments (structured debate content) ===
+    match /arguments/{argumentId} {
       allow read: if isAuth();
-      allow write: if false; // Managed via Cloud Functions (content moderation)
+      allow write: if false; // Cloud Function only (submitArgument)
     }
 
-    // Reactions collection
-    match /reactions/{reactionId} {
+    // === Votes (crowd judging with composite ID) ===
+    match /votes/{voteId} {
       allow read: if isAuth();
       allow create: if isAuth()
-        && reactionId == request.auth.uid + '_' + request.resource.data.postId
+        && voteId == request.resource.data.debateId + '_' + request.auth.uid
+        && request.resource.data.voterId == request.auth.uid
+        && request.resource.data.persuasivenessWinner in ['for', 'against', 'draw']
+        && request.resource.data.betterLogic in ['for', 'against', 'equal']
+        && request.resource.data.betterEvidence in ['for', 'against', 'equal']
+        && request.resource.data.moreOnTopic in ['for', 'against', 'equal']
+        && request.resource.data.moreRespectful in ['for', 'against', 'equal']
+        && request.resource.data.keys().hasAll([
+          'debateId', 'voterId', 'persuasivenessWinner',
+          'betterLogic', 'betterEvidence', 'moreOnTopic', 'moreRespectful',
+          'changedMind', 'voterJudgeScore', 'createdAt'
+        ]);
+      allow update: if false; // No changing votes
+      allow delete: if false;
+    }
+
+    // === Argument Reactions (direct client writes with composite ID) ===
+    match /argumentReactions/{reactionId} {
+      allow read: if isAuth();
+      allow create: if isAuth()
+        && reactionId == request.auth.uid + '_' + request.resource.data.argumentId
         && request.resource.data.userId == request.auth.uid
-        && request.resource.data.reactionType in ['changed_mind', 'good_point', 'fair_disagree'];
+        && request.resource.data.reactionType in ['persuasive', 'strongLogic', 'goodEvidence', 'respectful'];
       allow update: if isAuth()
         && resource.data.userId == request.auth.uid
-        && request.resource.data.reactionType in ['changed_mind', 'good_point', 'fair_disagree']
         && request.resource.data.userId == resource.data.userId
-        && request.resource.data.postId == resource.data.postId;
+        && request.resource.data.argumentId == resource.data.argumentId
+        && request.resource.data.reactionType in ['persuasive', 'strongLogic', 'goodEvidence', 'respectful'];
       allow delete: if isAuth() && resource.data.userId == request.auth.uid;
     }
 
-    // Reports collection
+    // === Matchmaking Queue ===
+    match /matchmakingQueue/{entryId} {
+      allow read: if isAuth() && resource.data.userId == request.auth.uid;
+      allow write: if false; // Cloud Function only
+    }
+
+    // === Challenges ===
+    match /challenges/{challengeId} {
+      allow read: if isAuth()
+        && (resource.data.challengerId == request.auth.uid
+         || resource.data.challengedId == request.auth.uid);
+      allow write: if false; // Cloud Function only
+    }
+
+    // === Debate Results ===
+    match /debateResults/{debateId} {
+      allow read: if isAuth();
+      allow write: if false; // Cloud Function only
+    }
+
+    // === Social Clips (public for sharing) ===
+    match /socialClips/{clipId} {
+      allow read: if true;
+      allow write: if false; // Cloud Function only
+    }
+
+    // === Reports ===
     match /reports/{reportId} {
       allow read: if isModerator();
       allow create: if isAuth()
         && request.resource.data.reporterId == request.auth.uid
-        && request.resource.data.keys().hasAll(['postId', 'reporterId', 'reason', 'status', 'createdAt']);
-      allow update: if false; // Managed via Cloud Function (actionReport)
+        && request.resource.data.keys().hasAll(['targetType', 'targetId', 'reporterId', 'reason', 'status', 'createdAt'])
+        && request.resource.data.targetType in ['argument', 'user', 'debate', 'clip'];
+      allow update: if false; // Cloud Function only
       allow delete: if false;
     }
 
-    // Social tokens (admin-only)
+    // === Moderator Actions (visible to all debate watchers) ===
+    match /moderatorActions/{actionId} {
+      allow read: if isAuth();
+      allow write: if false; // Cloud Function only
+    }
+
+    // === Leaderboards (public) ===
+    match /leaderboards/{leaderboardId} {
+      allow read: if true;
+      allow write: if false; // Cloud Function only
+    }
+
+    // === Social Tokens (admin-only) ===
     match /socialTokens/{tokenId} {
       allow read, write: if false; // Admin SDK only
     }

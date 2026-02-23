@@ -13,7 +13,7 @@ import {
   getBlockedUsers,
   updateBlockedUsers,
 } from '../services/firestore'
-import { syncSocialAccountFn } from '../services/functions'
+// Social account sync removed in v2 rebuild
 import { useCurrentUser } from '../hooks'
 import { useBlockedUsernames } from '../hooks'
 import { useThemeStore } from '../store/theme'
@@ -77,13 +77,15 @@ export default function Settings() {
   })
 
   const syncSocial = useMutation({
-    mutationFn: (provider: string) => syncSocialAccountFn(provider),
+    mutationFn: async (_provider: string) => {
+      throw new Error('Social account sync coming soon')
+    },
     onSuccess: () => {
       setSyncError('')
       queryClient.invalidateQueries({ queryKey: ['socialAccounts', uid] })
     },
     onError: () => {
-      setSyncError('Failed to sync account. Please try again.')
+      setSyncError('Social account sync is not yet available.')
     },
   })
 

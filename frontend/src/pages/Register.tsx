@@ -38,32 +38,41 @@ export default function Register() {
     setLoading(true)
 
     try {
+      console.log('[Register] Step 1: Checking username availability...')
       const available = await checkUsernameAvailable(username)
       if (!available) {
         setError('Username already taken')
         setLoading(false)
         return
       }
+      console.log('[Register] Username available')
 
+      console.log('[Register] Step 2: Creating Firebase Auth account...')
       const userCredential = await createUserWithEmailAndPassword(auth, email, password)
+      console.log('[Register] Auth account created:', userCredential.user.uid)
 
       try {
+        console.log('[Register] Step 3: Calling registerUsername Cloud Function...')
         await registerUsername(username, displayName || undefined)
+        console.log('[Register] Username registered successfully')
       } catch (fnErr) {
-        // Cloud Function failed — delete the orphaned Firebase Auth account
+        console.error('[Register] Cloud Function failed:', fnErr)
         await userCredential.user.delete()
         throw fnErr
       }
 
-      // Send verification email (non-blocking — don't fail registration if this errors)
       sendEmailVerification(userCredential.user).catch(() => {})
-
       navigate('/onboarding')
     } catch (err: unknown) {
+      console.error('[Register] Registration error:', err)
       const errorMsg =
         err instanceof Error ? err.message : 'Registration failed'
       if (errorMsg.includes('email-already-in-use')) {
-        setError('Email already registered')
+        setError('Email already registered. Try signing in instead.')
+      } else if (errorMsg.includes('permission-denied')) {
+        setError('Permission denied. Please try again.')
+      } else if (errorMsg.includes('network')) {
+        setError('Network error. Please check your connection.')
       } else {
         setError(errorMsg)
       }
